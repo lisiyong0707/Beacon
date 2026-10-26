@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beacon 探针</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14202b;--mute:#6b7886;--line:#dde3e9;--track:#e6ebf0;--ok:#1f9d6b;--warn:#d99a1b;--bad:#d64545;--ct:#2b59ff;--cu:#d9731b;--cm:#7a4fd6}
+@media(prefers-color-scheme:dark){:root:not([data-t=light]){--bg:#0e151c;--card:#16202a;--ink:#e7edf2;--mute:#8896a4;--line:#243240;--track:#223140;--ct:#6c8cff;--cu:#f0954a;--cm:#a98af0}}
+:root[data-t=dark]{--bg:#0e151c;--card:#16202a;--ink:#e7edf2;--mute:#8896a4;--line:#243240;--track:#223140;--ct:#6c8cff;--cu:#f0954a;--cm:#a98af0}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;font-variant-numeric:tabular-nums}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:18px max(16px,4vw);border-bottom:1px solid var(--line)}
+h1{margin:0;font-size:20px;letter-spacing:.02em}.sum{color:var(--mute);flex:1}a{color:var(--ct)}
+button{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:5px 12px;cursor:pointer}
+button:focus-visible,.card:focus-visible{outline:2px solid var(--ct);outline-offset:2px}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;padding:14px max(16px,4vw) 0}.on{background:var(--ink)!important;color:var(--bg)!important;border-color:var(--ink)!important}
+main{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:16px;padding:16px max(16px,4vw) 40px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px;cursor:pointer}.card.off{opacity:.55}.card.al{border-color:var(--bad)}
+.top{display:flex;align-items:center;gap:8px}.flag{font-size:20px}.nm{font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}.off .dot{background:var(--bad)}
+.badge{background:var(--bad);color:#fff;border-radius:10px;padding:0 8px;font-size:12px}
+.sub{color:var(--mute);font-size:12px;margin:2px 0 12px}
+.row{display:grid;grid-template-columns:38px 1fr 44px;gap:8px;align-items:center;margin:6px 0;font-size:12px}.row span:first-child{color:var(--mute)}.row span:last-child{text-align:right}
+.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;border-radius:4px}
+.net{display:flex;justify-content:space-between;margin:12px 0 10px;font-size:13px}.net small{color:var(--mute)}
+.ping{display:flex;gap:6px}.ping b{flex:1;text-align:center;border-radius:6px;padding:4px 0;font-size:12px;font-weight:600;color:#fff}.ping small{display:block;font-weight:400;opacity:.85}
+svg.sp{width:100%;height:46px;margin-top:10px;display:block}.empty{grid-column:1/-1;color:var(--mute);text-align:center;padding:60px 0}
+.dh{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:16px max(16px,4vw)}.dh h2{margin:0;flex:1;font-size:20px}
+.wrap{padding:0 max(16px,4vw) 40px;display:grid;gap:16px}.chips{display:flex;gap:8px;flex-wrap:wrap}.chips span{background:var(--bad);color:#fff;border-radius:6px;padding:2px 10px}
+.specs{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.specs div{background:var(--card);padding:10px 14px}.specs small{display:block;color:var(--mute)}
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px}
+.chart,.ev{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}.chart h3,.ev h3{margin:0 0 6px;font-size:14px}
+.chart svg{width:100%;height:auto;display:block}.chart text{fill:var(--mute);font-size:11px}.leg{display:flex;gap:14px;color:var(--mute);font-size:12px}.leg i{display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle}
+.ev ul{list-style:none;margin:0;padding:0}.ev li{display:flex;gap:14px;padding:6px 0;border-top:1px solid var(--line)}.ev li time{color:var(--mute);white-space:nowrap}
+footer{text-align:center;color:var(--mute);padding:0 0 30px}
+</style>
+</head>
+<body>
+<header><h1>Beacon 探针</h1><span class="sum" id="sum"></span><button id="th" aria-label="切换主题">主题</button></header>
+<div id="view"></div>
+<footer><a href="/admin">管理</a></footer>
+<script>
+const $=s=>document.querySelector(s);let nodes=[],region="all",rng=86400,timer;
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const flag=c=>/^[A-Z]{2}$/.test(c)?String.fromCodePoint(...[...c].map(x=>127397+x.charCodeAt())):"🌐";
+const bytes=b=>{const u=["B","KB","MB","GB","TB","PB"];let i=0;while(b>=1024&&i<5){b/=1024;i++}return b.toFixed(i>1?1:0)+" "+u[i]};
+const rate=b=>(b*8/1e6).toFixed(2)+" Mbps",days=s=>s>=86400?Math.floor(s/86400)+" 天":Math.floor(s/3600)+" 小时";
+const col=(v,a,b)=>v<=a?"var(--ok)":v<=b?"var(--warn)":"var(--bad)";
+const CAR={ct:"电信",cu:"联通",cm:"移动"},MET={cpu:"CPU",mem:"内存",disk:"硬盘"};
+const alertText=a=>({offline:"离线",cpu:"CPU 过高",mem:"内存过高",disk:"硬盘过高"})[a]||CAR[a.split("_")[0]]+({down:"Ping 超时",slow:"延迟过高",loss:"丢包过高"})[a.split("_")[1]];
+const hm=t=>new Date(t*1000).toLocaleTimeString("zh-CN",{hour12:false,hour:"2-digit",minute:"2-digit"});
+function evText(e){if(e.kind==="offline")return `离线约 ${e.mins} 分钟`;
+  if(e.kind==="high")return `${MET[e.metric]} 超过阈值，持续 ${e.mins} 分钟，峰值 ${e.peak.toFixed(0)}%`;const c=CAR[e.metric];
+  return e.kind==="ping_down"?`${c} Ping 超时，持续 ${e.mins} 分钟`:e.kind==="ping_slow"?`${c} 延迟过高，持续 ${e.mins} 分钟，峰值 ${Math.round(e.peak)} ms`:`${c} 丢包过高，持续 ${e.mins} 分钟，峰值 ${Math.round(e.peak)}%`}
+
+/* ---------- list ---------- */
+function bar(l,v){return `<div class="row"><span>${l}</span><div class="bar"><i style="width:${v}%;background:${col(v,70,90)}"></i></div><span>${v.toFixed(0)}%</span></div>`}
+function pingBadge(l,[ms,loss]){const bg=ms<0?"var(--bad)":ms<=100?"var(--ok)":ms<=300?"var(--warn)":"var(--bad)";
+  return `<b style="background:${bg}">${l}<small>${ms<0?"超时":Math.round(ms)+" ms"}${loss>0&&ms>=0?" · 丢包 "+Math.round(loss)+"%":""}</small></b>`}
+function spark(h){if(h.length<2)return"";const W=300,H=46,max=Math.max(50,...h.flatMap(r=>[r[5],r[6],r[7]]));
+  return `<svg class="sp" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="延迟趋势">`+[[5,"--ct"],[6,"--cu"],[7,"--cm"]].map(([k,c])=>{
+    let d="",pen=false;h.forEach((r,i)=>{if(r[k]<0){pen=false;return}d+=(pen?"L":"M")+(i/(h.length-1)*W).toFixed(1)+" "+(H-2-r[k]/max*(H-4)).toFixed(1);pen=true});
+    return `<path d="${d}" fill="none" stroke="var(${c})" stroke-width="1.5" vector-effect="non-scaling-stroke"/>`}).join("")+"</svg>"}
+function card(n){const l=n.last,al=n.alerts.length;return `<article class="card ${n.online?"":"off"} ${al?"al":""}" tabindex="0" role="link" data-id="${n.id}"><div class="top"><span class="flag">${flag(n.country)}</span><span class="nm">${esc(n.name)}</span>${al?`<span class="badge">${al} 告警</span>`:""}<span class="dot" title="${n.online?"在线":"离线"}"></span></div>
+<div class="sub">${esc(n.os)} · ${n.cores} 核 · 内存 ${bytes(n.mem_total)} · 硬盘 ${bytes(n.disk_total)} · 运行 ${days(n.uptime)}</div>
+${bar("CPU",l.cpu)}${bar("内存",l.mem)}${bar("硬盘",l.disk)}
+<div class="net"><span>↓ ${rate(l.rx)}<br><small>累计 ${bytes(n.rx_total)}</small></span><span style="text-align:right">↑ ${rate(l.tx)}<br><small>累计 ${bytes(n.tx_total)}</small></span></div>
+<div class="ping">${pingBadge("电信",l.ct)}${pingBadge("联通",l.cu)}${pingBadge("移动",l.cm)}</div>${spark(n.hist)}</article>`}
+function renderList(){
+  const regs={};nodes.forEach(n=>{const c=n.country||"??";regs[c]=(regs[c]||0)+1});
+  const tabs=[["all","全部 "+nodes.length],...Object.entries(regs).map(([c,k])=>[c,flag(c)+" "+k])].map(([c,t])=>`<button data-r="${c}" class="${c===region?"on":""}">${t}</button>`).join("");
+  const list=nodes.filter(n=>region==="all"||(n.country||"??")===region);
+  $("#view").innerHTML=`<div class="tabs" id="tabs">${tabs}</div><main id="grid">${list.length?list.map(card).join(""):'<div class="empty">还没有节点上报数据</div>'}</main>`;
+  const on=nodes.filter(n=>n.online).length,al=nodes.filter(n=>n.alerts.length).length;
+  $("#sum").textContent=`${on} / ${nodes.length} 在线${al?` · ${al} 个节点告警`:""}`}
+
+/* ---------- detail ---------- */
+function chart(title,h,series,fmt,fixed){
+  if(h.length<2)return `<section class="chart"><h3>${title}</h3><div class="sub">数据不足</div></section>`;
+  const W=600,H=180,L=46,R=8,T=8,B=20;
+  const max=fixed||Math.max(1e-9,...series.flatMap(s=>h.map(s.f)))*1.15;
+  const x=i=>L+i/(h.length-1)*(W-L-R),y=v=>T+(1-v/max)*(H-T-B);
+  const grid=[0,.5,1].map(f=>`<line x1="${L}" x2="${W-R}" y1="${y(max*f)}" y2="${y(max*f)}" stroke="var(--line)"/><text x="${L-6}" y="${y(max*f)+4}" text-anchor="end">${fmt(max*f)}</text>`).join("");
+  const ticks=[0,.25,.5,.75,1].map(f=>{const i=Math.round(f*(h.length-1));return `<text x="${x(i)}" y="${H-4}" text-anchor="${f==0?"start":f==1?"end":"middle"}">${hm(h[i][0])}</text>`}).join("");
+  const paths=series.map(s=>{let d="",pen=0;h.forEach((r,i)=>{const v=s.f(r);if(v<0){pen=0;return}d+=(pen?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1);pen=1});return `<path d="${d}" fill="none" stroke="var(${s.c})" stroke-width="1.6"/>`}).join("");
+  return `<section class="chart"><h3>${title}</h3><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${title}">${grid}${ticks}${paths}</svg><div class="leg">${series.map(s=>`<span><i style="background:var(${s.c})"></i>${s.n}</span>`).join("")}</div></section>`}
+async function renderDetail(id){
+  let n;try{const r=await fetch(`/api/nodes/${id}?range=${rng}`);if(!r.ok)throw 0;n=await r.json()}catch{$("#view").innerHTML='<div class="dh"><button data-back>← 返回</button></div><div class="empty">找不到这个节点</div>';return}
+  const h=n.hist,l=n.last,s=(k,v)=>`<div><small>${k}</small>${esc(v)}</div>`;
+  const pct=(m)=>`${m.toFixed(0)}%`,pf=v=>Math.round(v)+" ms";
+  const rb=[[3600,"1 小时"],[21600,"6 小时"],[43200,"12 小时"],[86400,"24 小时"]].map(([r,t])=>`<button data-rng="${r}" class="${r===rng?"on":""}">${t}</button>`).join("");
+  $("#view").innerHTML=`<div class="dh"><button data-back>← 返回</button><h2>${flag(n.country)} ${esc(n.name)} <span class="dot" style="display:inline-block;background:${n.online?"var(--ok)":"var(--bad)"}"></span></h2>${rb}<button data-share>复制链接</button></div>
+<div class="wrap">${n.alerts.length?`<div class="chips">${n.alerts.map(a=>`<span>${alertText(a)}</span>`).join("")}</div>`:""}
+<div class="specs">${s("CPU 型号",n.cpu_model||"-")}${s("核心 / 架构",`${n.cores} 核 · ${n.arch||"-"}`)}${s("系统",n.os)}${s("内核",n.kernel)}${s("虚拟化",n.virt||"-")}${s("运行时间",days(n.uptime))}
+${s("负载 1/5/15",[l.load1,n.load5,n.load15].map(v=>(+v).toFixed(2)).join(" / "))}${s("进程数",n.procs||"-")}${s("内存",`${bytes(n.mem_total)} · 使用 ${pct(l.mem)}`)}${s("Swap 使用",pct(n.swap||0))}${s("硬盘",`${bytes(n.disk_total)} · 使用 ${pct(l.disk)}`)}${s("累计流量",`↓ ${bytes(n.rx_total)}  ↑ ${bytes(n.tx_total)}`)}</div>
+<div class="charts">${chart("资源使用率",h,[{n:"CPU",c:"--ct",f:r=>r[1]},{n:"内存",c:"--cu",f:r=>r[2]},{n:"硬盘",c:"--cm",f:r=>r[8]??-1}],pct,100)}
+${chart("网络速率 (Mbps)",h,[{n:"下载",c:"--ct",f:r=>r[3]*8/1e6},{n:"上传",c:"--cu",f:r=>r[4]*8/1e6}],v=>v.toFixed(v<10?1:0))}
+${chart("TCP 延迟",h,[{n:"电信",c:"--ct",f:r=>r[5]},{n:"联通",c:"--cu",f:r=>r[6]},{n:"移动",c:"--cm",f:r=>r[7]}],pf)}
+${chart("丢包率",h,[{n:"电信",c:"--ct",f:r=>r[9]??-1},{n:"联通",c:"--cu",f:r=>r[10]??-1},{n:"移动",c:"--cm",f:r=>r[11]??-1}],pct,100)}</div>
+<section class="ev"><h3>事件日志（阈值：CPU/内存/硬盘 ${n.thresholds.cpu}/${n.thresholds.mem}/${n.thresholds.disk}%，丢包 ${n.thresholds.loss}%，延迟 ${n.thresholds.latency} ms；连续 3 分钟才记录）</h3>
+${n.events.length?`<ul>${n.events.map(e=>`<li><time>${new Date(e.t*1000).toLocaleString("zh-CN",{hour12:false})}</time><span>${evText(e)}</span></li>`).join("")}</ul>`:'<div class="sub">最近 24 小时没有事件</div>'}</section></div>`;
+  $("#sum").textContent=n.online?"在线":"离线"}
+
+/* ---------- routing ---------- */
+const detailId=()=>(location.hash.match(/^#\/node\/([a-f0-9]+)$/)||[])[1];
+async function tick(){clearTimeout(timer);const id=detailId();
+  try{if(id)await renderDetail(id);else{nodes=(await(await fetch("/api/nodes")).json()).filter(n=>n.last).sort((a,b)=>a.name.localeCompare(b.name));renderList()}}
+  catch(e){$("#sum").textContent="连接失败，重试中…"}timer=setTimeout(tick,id?10000:5000)}
+document.addEventListener("click",e=>{const t=e.target;let b;
+  if(b=t.closest("[data-r]")){region=b.dataset.r;renderList()}
+  else if(b=t.closest("[data-rng]")){rng=+b.dataset.rng;tick()}
+  else if(t.closest("[data-back]"))location.hash="";
+  else if(t.closest("[data-share]"))navigator.clipboard?.writeText(location.href).then(()=>t.textContent="已复制");
+  else if(b=t.closest(".card"))location.hash="#/node/"+b.dataset.id});
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&e.target.classList?.contains("card"))location.hash="#/node/"+e.target.dataset.id});
+addEventListener("hashchange",()=>{scrollTo(0,0);tick()});
+$("#th").onclick=()=>{const d=document.documentElement,dark=getComputedStyle(d).getPropertyValue("--bg").trim()==="#0e151c";d.dataset.t=dark?"light":"dark";try{localStorage.t=d.dataset.t}catch{}};
+try{if(localStorage.t)document.documentElement.dataset.t=localStorage.t}catch{}
+tick();
+</script>
+</body>
+</html>

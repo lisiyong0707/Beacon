@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beacon 管理</title>
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14202b;--mute:#6b7886;--line:#dde3e9;--ok:#1f9d6b;--bad:#d64545;--ct:#2b59ff}
+@media(prefers-color-scheme:dark){:root{--bg:#0e151c;--card:#16202a;--ink:#e7edf2;--mute:#8896a4;--line:#243240;--ct:#6c8cff}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+header{display:flex;gap:12px;align-items:center;padding:18px max(16px,4vw);border-bottom:1px solid var(--line)}h1{margin:0;font-size:20px;flex:1}
+main{max-width:900px;margin:0 auto;padding:16px;display:grid;gap:16px}a{color:var(--ct)}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px}h2{margin:0 0 12px;font-size:15px}
+input,select,button{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 10px}input{min-width:0}
+button{cursor:pointer;background:var(--card)}button.pri{background:var(--ct);color:#fff;border-color:var(--ct)}button.dng{color:var(--bad)}
+:is(input,select,button):focus-visible{outline:2px solid var(--ct);outline-offset:2px}
+.r{display:flex;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap}.r:first-of-type{border-top:0}.r input{flex:1;min-width:140px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}.dot.off{background:var(--bad)}.mute{color:var(--mute);font-size:12px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}.g label{display:grid;gap:4px;color:var(--mute);font-size:12px}
+#msg{color:var(--bad);min-height:1.4em}#login{max-width:340px;margin:80px auto;display:grid;gap:10px}
+</style>
+</head>
+<body>
+<header><h1>Beacon 管理</h1><a href="/">返回仪表盘</a><button id="out" hidden>退出</button></header>
+<form id="login"><label for="pw">管理密码</label><input id="pw" type="password" autocomplete="current-password" required><button class="pri">登录</button><div id="msg" role="alert"></div></form>
+<main id="app" hidden>
+<section><h2>节点</h2><div id="nodes"></div><div class="mute">删除会同时屏蔽该节点，之后它的上报会被拒绝，可在下方解除。</div></section>
+<section><h2>已屏蔽</h2><div id="blocked"></div></section>
+<section><h2>告警设置</h2><p class="mute">指标连续 3 分钟超过阈值才触发；触发和恢复时会向 Webhook 发一条 POST（JSON 含 text 和 content 字段，兼容 Slack / Discord 风格接口）。</p>
+<div class="g" id="th"></div><label class="mute" style="display:grid;gap:4px;margin-top:12px">Webhook 地址（留空则不推送）<input id="wh" placeholder="https://"></label>
+<div class="r"><button class="pri" id="save">保存设置</button><span class="mute" id="saved"></span></div></section>
+<section><h2>安装客户端</h2><div class="r"><select id="key"></select><button id="copy">复制命令</button></div><input id="cmd" readonly style="width:100%" aria-label="安装命令"></section>
+</main>
+<script>
+const $=s=>document.querySelector(s);let pw=sessionStorage.getItem("pw")||"",info;
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const LB={cpu:"CPU 阈值 %",mem:"内存阈值 %",disk:"硬盘阈值 %",loss:"丢包阈值 %",latency:"延迟阈值 ms"};
+async function api(path,method="GET",body){const r=await fetch(path,{method,headers:{"X-Admin-Password":pw,"Content-Type":"application/json"},body:body?JSON.stringify(body):undefined});
+  if(r.status===403||r.status===429){logout(r.status===429?"尝试次数过多，请 5 分钟后再试":"密码不正确");throw 0}return r.json()}
+function logout(m=""){pw="";sessionStorage.removeItem("pw");$("#app").hidden=true;$("#out").hidden=true;$("#login").hidden=false;$("#msg").textContent=m}
+async function load(){info=await api("/api/admin/info");$("#login").hidden=true;$("#app").hidden=false;$("#out").hidden=false;
+  $("#nodes").innerHTML=info.nodes.length?info.nodes.map(n=>`<div class="r" data-id="${n.id}"><span class="dot ${n.online?"":"off"}"></span><span>${esc(n.country||"??")}</span><input value="${esc(n.custom_name)}" placeholder="${esc(n.name)}" aria-label="显示名称"><button data-a="rename">保存名称</button><button class="dng" data-a="del">删除并屏蔽</button></div>`).join(""):'<div class="mute">还没有节点</div>';
+  $("#blocked").innerHTML=info.blocked.length?info.blocked.map(b=>`<div class="r" data-id="${b.id}"><span style="flex:1">${esc(b.name)}</span><button data-a="unblock">解除屏蔽</button></div>`).join(""):'<div class="mute">没有被屏蔽的节点</div>';
+  $("#th").innerHTML=Object.entries(LB).map(([k,t])=>`<label>${t}<input type="number" data-k="${k}" value="${info.settings.thresholds[k]}"></label>`).join("");
+  $("#wh").value=info.settings.webhook;$("#key").innerHTML=info.keys.map((k,i)=>`<option value="${i}">密钥 ${i+1}（${esc(k.slice(0,4))}…）</option>`).join("");cmd()}
+const cmd=()=>$("#cmd").value=`curl -fsSL '${location.origin}/install.sh?key=${encodeURIComponent(info.keys[$("#key").value]||"")}' | sh`;
+$("#key").onchange=cmd;
+$("#copy").onclick=()=>navigator.clipboard?.writeText($("#cmd").value).then(()=>{$("#copy").textContent="已复制"});
+$("#login").onsubmit=async e=>{e.preventDefault();pw=$("#pw").value;$("#pw").value="";try{await load();sessionStorage.setItem("pw",pw)}catch{}};
+$("#out").onclick=()=>logout();
+$("#app").onclick=async e=>{const b=e.target.closest("button[data-a]");if(!b)return;const row=b.closest("[data-id]"),id=row.dataset.id,a=b.dataset.a;
+  if(a==="rename")await api("/api/nodes/"+id,"POST",{name:row.querySelector("input").value});
+  if(a==="del"&&confirm("删除并屏蔽这个节点？"))await api("/api/nodes/"+id,"DELETE");
+  if(a==="unblock")await api("/api/admin/unblock","POST",{id});await load()};
+$("#save").onclick=async()=>{const th={};document.querySelectorAll("[data-k]").forEach(i=>th[i.dataset.k]=+i.value);
+  const r=await api("/api/admin/settings","POST",{thresholds:th,webhook:$("#wh").value});$("#saved").textContent=r.ok?"已保存":"保存失败："+(r.error||"");if(r.ok)await load()};
+if(pw)load().catch(()=>{});
+</script>
+</body>
+</html>
