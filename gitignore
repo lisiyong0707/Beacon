@@ -1,0 +1,4 @@
+beacon.json
+beacon.json.tmp
+*.env
+__pycache__/
